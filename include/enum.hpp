@@ -15,8 +15,13 @@ enum OpType
 enum KernelType
 {
     KT_Default = 0,
+    KT_ByteTransformerAttention,
+    KT_FlashAttention_For_T4,
+    KT_FlashAttention2,
+    KT_HandleFlashAttentionWithoutCutlass,
     KT_UnFusedAttention,
-    KT_FlashAttention,
+    KT_UnFusedAttentionCublas
+
     KT_HGEMM_Naive,
     KT_HGEMM_WMMA,
     KT_HGEMM_MMA_PTX,
