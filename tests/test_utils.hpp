@@ -3,9 +3,73 @@
 #include "timer.hpp"
 #include "tensor.hpp"
 
-#define EPSILON 1e-1
+#define EPSILON 1e-5
 
 #include <functional>
+
+static int randomgen(int min, int max) //Pass in range
+{
+    // srand(time(NULL));  //Changed from rand(). srand() seeds rand for you.
+    int random = rand() % (max - min) + min;
+    return random;
+}
+
+template<typename T1, typename T2>
+void compareTwoTensor(const T1* pred, const T2* ref, const int size, const int print_size = 0, const std::string filename = "")
+{
+    FILE* fd = nullptr;
+    if (filename != "") {
+        fd = fopen(filename.c_str(), "w");
+        fprintf(fd, "| %10s | %10s | %10s | %10s | \n", "pred", "ref", "abs_diff", "rel_diff(%%)");
+    }
+
+    if (print_size > 0) {
+        LOGI("  id |   pred  |   ref   |abs diff | rel diff (%%) |");
+    }
+    float max_abs_diff  = 0.0f;
+    float mean_abs_diff = 0.0f;
+    float mean_rel_diff = 0.0f;
+    int   count         = 0;
+
+    #pragma omp parallel for
+    for (int i = 0; i < size; i++) {
+        if (i < print_size) {
+            LOGI("%4d | % 6.4f | % 6.4f | % 6.4f | % 7.4f |",
+                        i,
+                        (float)pred[i],
+                        (float)ref[i],
+                        abs((float)pred[i] - (float)ref[i]),
+                        abs((float)pred[i] - (float)ref[i]) / (abs((float)ref[i]) + 1e-6f) * 100.f);
+        }
+        if ((float)pred[i] == 0) {
+            continue;
+        }
+        count += 1;
+        mean_abs_diff += abs((float)pred[i] - (float)ref[i]);
+        mean_rel_diff += abs((float)pred[i] - (float)ref[i]) / (abs((float)ref[i]) + 1e-6f) * 100.f;
+
+        max_abs_diff = std::max(max_abs_diff, (float)pred[i] - (float)ref[i]);
+
+        if (fd != nullptr) {
+            fprintf(fd,
+                    "| %10.5f | %10.5f | %10.5f | %11.5f |\n",
+                    (float)pred[i],
+                    (float)ref[i],
+                    abs((float)pred[i] - (float)ref[i]),
+                    abs((float)pred[i] - (float)ref[i]) / (abs((float)ref[i]) + 1e-6f) * 100.f);
+        }
+    }
+    mean_abs_diff = (count == 0) ? 0.0f : mean_abs_diff / (float)count;
+    mean_rel_diff = (count == 0) ? 0.0f :mean_rel_diff / (float)count;
+    LOGI("%16s, TensorCompare: size: %d, count: %d, mean_abs_diff: % 6.4f, mean_rel_diff: % 6.4f (%%), max_abs_diff: % 6.4f", 
+         filename.substr(0, filename.find('.')).c_str(), size, count, mean_abs_diff, mean_rel_diff, max_abs_diff);
+
+    if (fd != nullptr) {
+        fprintf(fd, "size: %d, count: %d, mean_abs_diff: % 6.4f, mean_rel_diff: % 6.4f (%%), max_abs_diff: % 6.4f", 
+                size, count, mean_abs_diff, mean_rel_diff, max_abs_diff);
+        fclose(fd);
+    }
+}
 
 template<typename T>
 static bool isEqual(std::vector<T> const &v1, std::vector<T> const &v2)
@@ -101,60 +165,22 @@ static bool compareTensor(Tensor& lhs, Tensor& rhs, const char* msg = "")
         return false;
     }
 
-    for (int i = 0; i < gt_shapes[0]; ++i)
+    if (lhs.dtype() == DataType::FLOAT16)
     {
-        for (int j = 0; j < gt_shapes[1]; ++j)
-        {
-            for (int k = 0; k < gt_shapes[2]; ++k)
-            {
-                for (int m = 0; m < gt_shapes[3]; ++m)
-                {
-                    auto offset = i * gt_strides[0] + j * gt_strides[1] + k * gt_strides[2] + m * gt_strides[3];
-                    if (lhs.dtype() == DataType::FLOAT16)
-                    {
-                        auto lhs_elem = ((half *)lhs.data())[offset];
-                        auto rhs_elem = ((half *)rhs.data())[offset];
-
-                        if (!isEqual<half>(lhs_elem, rhs_elem))
-                        {
-                            LOGE("pos: %d, %d, %d, %d elem not equal, %.2f, %.2f\n",
-                                i, j, k, m, 
-                                float(lhs_elem),
-                                float(rhs_elem));
-                            return false;
-                        }
-                    }
-                    else if (lhs.dtype() == DataType::FLOAT32)
-                    {
-                        auto lhs_elem = ((float *)lhs.data())[offset];
-                        auto rhs_elem = ((float *)rhs.data())[offset];
-
-                        if (!isEqual<float>(lhs_elem, rhs_elem))
-                        {
-                            LOGE("pos: %d, %d, %d, %d elem not equal, %.2f, %.2f\n", i, j, k, m, lhs_elem, rhs_elem);
-                            return false;
-                        }
-                    }
-                    else if (lhs.dtype() == DataType::INT32)
-                    {
-                        auto lhs_elem = ((int *)lhs.data())[offset];
-                        auto rhs_elem = ((int *)rhs.data())[offset];
-
-                        if (!isEqual<int>(lhs_elem, rhs_elem))
-                        {
-                            LOGE("pos: %d, %d, %d, %d elem not equal, %d, %d\n", i, j, k, m, lhs_elem, rhs_elem);
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        LOGE("not supported!");
-                    }
-                }
-            }
-        }
+        compareTwoTensor<half, half>(((half *)rhs.data()), ((half *)lhs.data()), lhs.size(), 0, std::string(msg) + ".txt");
+    }
+    else if (lhs.dtype() == DataType::FLOAT32)
+    {
+        compareTwoTensor<float, float>(((float *)rhs.data()), ((float *)lhs.data()), lhs.size(), 0, std::string(msg) + ".txt");
+    }
+    else if (lhs.dtype() == DataType::INT32)
+    {
+        compareTwoTensor<int, int>(((int *)rhs.data()), ((int *)lhs.data()), lhs.size(), 0, std::string(msg) + ".txt");
+    }
+    else
+    {
+        LOGE("not supported!");
     }
 
-    LOGI("%16s, Correctness: Tenosr compare success", msg);
     return true;
 }

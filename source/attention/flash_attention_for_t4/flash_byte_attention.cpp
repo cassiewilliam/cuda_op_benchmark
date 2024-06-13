@@ -49,7 +49,6 @@ void flash_byte_attention(const Tensor &qkv,         // total_n x num_heads x he
     }
 
     // All stride are in elements, not bytes.
-    params.bias_batch_stride = num_heads * size_per_head;
     params.row_stride = num_heads * size_per_head;
     params.head_stride = size_per_head;
 

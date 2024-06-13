@@ -1,6 +1,7 @@
 #pragma once
 
 #include "enum.hpp"
+#include <vector_types.h>
 #include "cutlass/half.h"
 
 #include <memory>

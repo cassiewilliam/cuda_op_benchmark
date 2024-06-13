@@ -223,16 +223,13 @@ int Tensor::height() const
 
 void Tensor::fillData(bool random) const
 {
-    // NOTE: random input
-    unsigned int seed = 1;
-
     if (m_mtype == MemoryType::CPU)
     {
         if (m_dtype == FLOAT32)
         {
             for (size_t j = 0; j < size(); ++j)
             {
-                ((float*)m_cpu_data.get())[j] = rand_r(&seed) % 100 / 100.0f;
+                ((float*)m_cpu_data.get())[j] = rand() % 100 / 100.0f;
             }
         }
         else if (m_dtype == FLOAT16)
@@ -241,7 +238,7 @@ void Tensor::fillData(bool random) const
             {
                 for (size_t j = 0; j < size(); ++j)
                 {
-                    auto value = rand_r(&seed) % 200 / 100.0f;
+                    auto value = (rand() % 255 - 128) / 256.0f;
                     ((half *)m_cpu_data.get())[j] = half(value);
                 }
             }
@@ -257,7 +254,7 @@ void Tensor::fillData(bool random) const
                             for (int m = 0; m < m_shapes[3]; ++m)
                             {
                                 int offset = i * m_strides[0] + j * m_strides[1] + k * m_strides[2] + m * m_strides[3];
-                                ((half *)m_cpu_data.get())[offset] = half(offset % 256);
+                                ((half *)m_cpu_data.get())[offset] = half(float(offset % 65535));
                             }
                         }
                     }
@@ -268,14 +265,14 @@ void Tensor::fillData(bool random) const
         {
             for (size_t j = 0; j < size(); ++j)
             {
-                ((uint8_t*)m_cpu_data.get())[j] = rand_r(&seed) % 255;
+                ((uint8_t*)m_cpu_data.get())[j] = rand() % 255;
             }
         }
         else if (m_dtype == INT8)
         {
             for (size_t j = 0; j < size(); ++j)
             {
-                ((int8_t*)m_cpu_data.get())[j] = rand_r(&seed) % 255 - 128;
+                ((int8_t*)m_cpu_data.get())[j] = rand() % 255 - 128;
             }
         }
     }
@@ -286,21 +283,21 @@ void Tensor::fillData(bool random) const
             initialize_matrix<float>((float*)m_gpu_data.get(),
                                      shape(0) * shape(1) * shape(2),
                                      shape(3),
-                                     seed);
+                                     1);
         }
         else if (m_dtype == DataType::FLOAT16)
         {
             initialize_matrix<half>((half*)m_gpu_data.get(),
                                      shape(0) * shape(1) * shape(2),
                                      shape(3),
-                                     seed);
+                                     1);
         }
         else if (m_dtype == DataType::INT8)
         {
             initialize_matrix<int8_t>((int8_t*)m_gpu_data.get(),
                                       shape(0) * shape(1) * shape(2),
                                       shape(3),
-                                      seed);
+                                      1);
         }
     }
 }

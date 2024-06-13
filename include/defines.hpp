@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <memory>
+#include <omp.h>
 
 
 // Math
@@ -36,6 +37,35 @@
         LOGE("Check failed: %s ==> %s\n", #success, #log); \
     }
 
+/// @param COND       - a boolean expression to switch by
+/// @param CONST_NAME - a name given for the constexpr bool variable.
+/// @param ...       - code to execute for true and false
+///
+/// Usage:
+/// ```
+/// BOOL_SWITCH(flag, BoolConst, [&] {
+///     some_function<BoolConst>(...);
+/// });
+/// ```
+#define BOOL_SWITCH(COND, CONST_NAME, ...)      \
+  [&] {                                         \
+    if (COND) {                                 \
+      constexpr static bool CONST_NAME = true;  \
+      return __VA_ARGS__();                     \
+    } else {                                    \
+      constexpr static bool CONST_NAME = false; \
+      return __VA_ARGS__();                     \
+    }                                           \
+  }()
+
+#if !defined(__PRETTY_FUNCTION__) && !defined(__GNUC__)
+
+#define __PRETTY_FUNCTION__ __FUNCSIG__
+
+#endif
+
+typedef unsigned int uint;
+  
 inline std::shared_ptr<uint8_t> AllocBufferWithByteSize(int data_byte_size)
 {
     return std::shared_ptr<uint8_t>(new uint8_t[data_byte_size], std::default_delete<uint8_t[]>());

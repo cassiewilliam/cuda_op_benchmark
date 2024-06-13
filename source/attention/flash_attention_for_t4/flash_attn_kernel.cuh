@@ -53,8 +53,6 @@ struct AttnParams
     uint32_t row_stride;
     uint32_t head_stride;
 
-    uint32_t bias_batch_stride;
-
     // The scaling factors for the kernel.
     float scale_softmax;
     float scale_softmax_log2;
@@ -75,8 +73,13 @@ struct Kernel_Traits
     using MMA_Atom_Arch = MMA_Atom<SM75_16x8x8_F32F16F16F32_TN>;
     using ValLayoutMNK  = Layout<Shape<_1, _2, _2>>;
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
     using SmemCopyAtom           = Copy_Atom<SM75_U32x4_LDSM_N, elem_type>;
     using SmemCopyAtomTransposed = Copy_Atom<SM75_U16x8_LDSM_T, elem_type>;
+#else
+    using SmemCopyAtom                 = Copy_Atom<DefaultCopy, elem_type>;
+    using SmemCopyAtomTransposed       = Copy_Atom<DefaultCopy, elem_type>;
+#endif
 
     // The number of threads.
     static constexpr int kNWarps   = kNWarps_;

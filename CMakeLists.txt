@@ -14,12 +14,16 @@ endif()
 # NOTE(Yang Min): for half operator, architectures must greater than 70
 # 89 means build with RTX4090 GPU
 # 80 means build with A100 GPU
+# 70 means build with V100 GPU
+# 75 means build with T4 GPU
+# NOTE: 70 需要替换cutlass版本到3.1.0
 set(CMAKE_CUDA_ARCHITECTURES "80")
 
 find_package(CUDA REQUIRED)
 enable_language(CUDA)
 
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr --use_fast_math")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler -Wall -ldl") # -Xptxas -v
 
 set(EXTRA_LIBS "")
 
@@ -110,9 +114,11 @@ message(STATUS "message ${CUDA_NVCC_FLAGS} !!!!!!!!!!!")
 include_directories(
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/source
-    ${PROJECT_SOURCE_DIR}/source/flash_attention
+    ${PROJECT_SOURCE_DIR}/source/attention
     ${PROJECT_SOURCE_DIR}/tests
     ${PROJECT_SOURCE_DIR}/common
+    ${PROJECT_SOURCE_DIR}/3rdparty
+    ${PROJECT_SOURCE_DIR}/utils
     ${CUDA_INCLUDE_DIRS}
 )
 
@@ -128,7 +134,7 @@ add_executable(${PROJECT_NAME} ${TEST_SRC} ${CUDA_SRC} ${CUTLASS})
 # NOTE: add pthread for std::call_once
 # https://stackoverflow.com/questions/65335620/terminate-called-after-throwing-an-instance-of-stdsystem-error
 # target_link_libraries(${PROJECT_NAME} ${CUDA_LIBS} -pthread dl)
-target_link_libraries(${PROJECT_NAME} -pthread)
+target_link_libraries(${PROJECT_NAME} -pthread -lcudart -lcublas -lcublasLt -lcurand -fopenmp)
 
 if(CUDA_PROFILE)
     target_compile_options(${PROJECT_NAME} PRIVATE -DCUDA_PROFILE)

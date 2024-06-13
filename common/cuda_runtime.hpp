@@ -123,6 +123,8 @@ public:
         return m_stream;
     }
 
+    int getDevice();
+
 private:
     void* alloc(size_t size_in_bytes);
     void  free(void* ptr);

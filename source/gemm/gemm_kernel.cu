@@ -1,5 +1,6 @@
 #include "gemm_runner.hpp"
 #include "cutlass/uint128.h"
+#include <cute/tensor.hpp>
 
 #include <stdio.h>
 #include <cuda_runtime.h>
@@ -179,13 +180,13 @@ __global__ void mma_m16n8k16_kernel(bool  A_transpose,
 
         // Step2: A and B Global To Shared Memory with ldmatrix
         uint32_t A_shmem_lane_addr = __cvta_generic_to_shared(&A_shmem[lane_id % 16][(lane_id / 16) * 8]);
-        LDMATRIX_X4(RA[0], RA[1], RA[2], RA[3], A_shmem_lane_addr);
+        // LDMATRIX_X4(RA[0], RA[1], RA[2], RA[3], A_shmem_lane_addr);
 
         uint32_t B_shmem_lane_addr = __cvta_generic_to_shared(&B_shmem[lane_id % 8][((lane_id / 8) % 2) * 8]);
-        LDMATRIX_X2(RB[0], RB[1], B_shmem_lane_addr);
+        // LDMATRIX_X2(RB[0], RB[1], B_shmem_lane_addr);
 
         // Step3: TensorCore计算矩阵乘法
-        HMMA16816(RAcc[0], RAcc[1], RAcc[2], RAcc[3], RA[0], RA[1], RA[2], RA[3], RB[0], RB[1], RAcc[0], RAcc[1], RAcc[2], RAcc[3]);
+        // HMMA16816(RAcc[0], RAcc[1], RAcc[2], RAcc[3], RA[0], RA[1], RA[2], RA[3], RB[0], RB[1], RAcc[0], RAcc[1], RAcc[2], RAcc[3]);
 
         __syncthreads();
     }
@@ -235,6 +236,103 @@ __global__ void mma_m16n8k16_V2_kernel(bool  A_transpose,
     // TODO: 暂未实现
 }
 
+#define STAGES 4
+
+using namespace cute;
+
+// template <class TA, class TB, class TC>
+// __global__ void matmul(TA *A, TB *B, TC *C, int M, int N, int K)
+// {
+//     auto dA = make_stride(Int<1>{}, M);
+//     auto dB = make_stride(Int<1>{}, N);
+//     auto dC = make_stride(Int<1>{}, M);
+
+//     auto bM = Int<128>{};
+//     auto bN = Int<128>{};
+//     auto bK = Int<  8>{};
+
+//     auto blockA = make_layout(make_shape(bM,bK));
+//     auto blockB = make_layout(make_shape(bN,bK));
+//     auto blockC = make_layout(make_shape(bM,bN));
+
+//     auto threadA = make_layout(make_shape(Int<32>{}, Int< 8>{}));
+//     auto threadB = make_layout(make_shape(Int<32>{}, Int< 8>{}));
+//     auto threadC = make_layout(make_shape(Int<16>{}, Int<16>{}));
+
+//     extern __shared__ uint8_t shared_storage[];
+//     TA* sA_ptr = reinterpret_cast<TA *>(shared_storage);
+//     TB* sB_ptr = reinterpret_cast<TB *>(sA_ptr + bM * bK);
+
+//     auto sA = make_tensor(make_smem_ptr(sA_ptr), blockA);               // (BLK_M,BLK_K)
+//     auto sB = make_tensor(make_smem_ptr(sB_ptr), blockB);               // (BLK_N,BLK_K)
+
+//     auto mA = make_tensor(make_gmem_ptr(A), make_shape(M,K), dA);      // (M,K)
+//     auto mB = make_tensor(make_gmem_ptr(B), make_shape(N,K), dB);      // (N,K)
+//     auto mC = make_tensor(make_gmem_ptr(C), make_shape(M,N), dC);      // (M,N)
+
+//     auto blk_shape = make_shape(size<0>(sA), size<0>(sB), size<1>(sB));// (BLK_M,BLK_N,BLK_K)
+//     auto blk_coord = make_coord(blockIdx.x, blockIdx.y, _);            // (m,n,k)
+
+//     // auto gA = local_tile(mA, blk_shape, blk_coord, Step<_1, X,_1>{});  // (BLK_M,BLK_K,k)
+//     auto gB = local_tile(mB, blk_shape, blk_coord, Step< X,_1,_1>{});  // (BLK_N,BLK_K,k)
+//     auto gC = local_tile(mC, blk_shape, blk_coord, Step<_1,_1, X>{});  // (BLK_M,BLK_N)
+
+//     auto gA = local_tile(mA, make_shape(bM, bK), make_coord(blockIdx.x, _));
+//     // if (thread0()) {
+//     //   print("gA:\n");
+//     //   print(gA.shape());
+//     //   print("\n");
+//     //   print(gA.stride());
+//     //   print("\n");
+//     // }
+
+//     auto tAgA = local_partition(gA, threadA, threadIdx.x);                  // (THR_M,THR_K,k)
+//     auto tAsA = local_partition(sA, threadA, threadIdx.x);                  // (THR_M,THR_K)
+
+//     auto tBgB = local_partition(gB, threadB, threadIdx.x);                  // (THR_N,THR_K,k)
+//     auto tBsB = local_partition(sB, threadB, threadIdx.x);                  // (THR_N,THR_K)
+
+//     // Partition sA (M,K) by the rows of tC
+//     auto tCsA = local_partition(sA, threadC, threadIdx.x, Step<_1, X>{});   // (THR_M,BLK_K)
+//     // Partition sB (N,K) by the cols of tC
+//     auto tCsB = local_partition(sB, threadC, threadIdx.x, Step< X,_1>{});   // (THR_N,BLK_K)
+//     // Partition gC (M,N) by the tile of tC
+//     auto tCgC = local_partition(gC, threadC, threadIdx.x, Step<_1,_1>{});   // (THR_M,THR_N)
+
+//     // Allocate the accumulators -- same size as the projected data
+//     auto tCrC = make_fragment_like(tCgC);                              // (THR_M,THR_N)
+
+//     // Clear the accumulators
+//     clear(tCrC);
+
+//     auto k_max = size<2>(tAgA);
+
+//     for (int k = 0; k < k_max; ++k)
+//     {
+//       // Copy gmem to smem
+//       copy(tAgA(_,_,k), tAsA);
+//       copy(tBgB(_,_,k), tBsB);
+
+//       cp_async_fence();
+//       cp_async_wait<0>();
+
+//       __syncthreads();
+
+//       // Compute gemm on smem
+//       gemm(tCsA, tCsB, tCrC);
+
+//       __syncthreads();
+//     }
+
+//     //
+//     // Epilogue
+//     //
+
+//     TC alpha = (TC)1.0;
+//     TC beta = (TC)0.0;
+//     axpby(alpha, tCrC, beta, tCgC);
+// }
+
 // 5. HGEMM with Cutlass API
 __global__ void cutlass_m16n8k16_kernel(bool  A_transpose,
                                         bool  B_transpose,
@@ -247,7 +345,8 @@ __global__ void cutlass_m16n8k16_kernel(bool  A_transpose,
                                         float beta,
                                         half* __restrict__ C)
 {
-    // TODO: 暂未实现
+    
+    // matmul<half, half, half>(A, B, C, m, n, k);
 }
 
 void gemm_runner(bool         transa,
@@ -281,7 +380,7 @@ void gemm_runner(bool         transa,
         {
             constexpr int WMMA_M = 16;
             constexpr int WMMA_N = 16;
-            constexpr int WMMA_K = 16;
+            // constexpr int WMMA_K = 16;
             constexpr int WARP_SIZE = 32;
 
             dim3 block_dim(WARP_SIZE);
@@ -293,7 +392,7 @@ void gemm_runner(bool         transa,
         {
             constexpr int MMA_M = 16;
             constexpr int MMA_N = 8;
-            constexpr int MMA_K = 16;
+            // constexpr int MMA_K = 16;
             constexpr int WARP_SIZE = 32;
 
             dim3 block_dim(WARP_SIZE);
@@ -307,7 +406,10 @@ void gemm_runner(bool         transa,
         }
         else if (algoType == KernelType::KT_HGEMM_CUTLASS)
         {
+            dim3 block_dim(256);
+            dim3 grid_dim(m / 128, n / 128);
 
+            // cutlass_m16n8k16_kernel<<<grid_dim, block_dim>>>(false, false, m, n, k, *alpha, (const half *)A, (const half *)B, *beta, (float *)D);
         }
     }
     else

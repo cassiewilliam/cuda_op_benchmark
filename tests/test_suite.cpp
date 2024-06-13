@@ -32,7 +32,7 @@ static void printTestResult(int wrong, int right)
     printf("{\"failed\":%d,\"passed\":%d}\n", wrong, right);
 }
 
-int TestSuite::run(const char *key, int precision)
+int TestSuite::run(const char *key, std::vector<int> flags)
 {
     if (key == NULL || strlen(key) == 0)
         return 0;
@@ -48,7 +48,7 @@ int TestSuite::run(const char *key, int precision)
         {
             runUnit++;
             printf("\trunning %s.\n", test->name.c_str());
-            auto res = test->run(precision);
+            auto res = test->run(flags);
             if (!res)
             {
                 wrongs.emplace_back(test->name);
@@ -67,7 +67,7 @@ int TestSuite::run(const char *key, int precision)
     return wrongs.size();
 }
 
-int TestSuite::runAll(int precision)
+int TestSuite::runAll(std::vector<int> flags)
 {
     auto suite = TestSuite::get();
     std::vector<std::string> wrongs;
@@ -75,7 +75,7 @@ int TestSuite::runAll(int precision)
     {
         TestCase *test = suite->m_tests[i];
         printf("\trunning %s.\n", test->name.c_str());
-        auto res = test->run(precision);
+        auto res = test->run(flags);
         if (!res)
         {
             wrongs.emplace_back(test->name);

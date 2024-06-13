@@ -92,3 +92,10 @@ size_t CUDARuntime::blocksNum(const size_t total_threads)
 {
     return (total_threads + m_thread_per_block - 1) / m_thread_per_block;
 }
+
+int CUDARuntime::getDevice()
+{
+    int current_dev_id = 0;
+    cudaCheck(cudaGetDevice(&current_dev_id));
+    return current_dev_id;
+}

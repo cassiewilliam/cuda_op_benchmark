@@ -11,21 +11,25 @@ int main(int argc, char *argv[])
 {
     if (argc == 2 && strcmp(argv[1], "-h") == 0)
     {
-        printf("./cuda_example [test_name] [flag: 1 means verify results]\n");
+        printf("./CUDABench [test_name] [0:verify or 1:profiler] [param1] [param2]\n");
         return 0;
     }
 
     if (argc > 2)
     {
         auto name = argv[1];
-        int  flag = atoi(argv[2]);
+        std::vector<int> flags;
+        for (int i = 2; i < argc; ++i)
+        {
+            flags.push_back(atoi(argv[i]));
+        }
         if (strcmp(name, "all") == 0)
         {
             return TestSuite::runAll();
         }
         else
         {
-            return TestSuite::run(name, flag);
+            return TestSuite::run(name, flags);
         }
     }
     else if (argc > 1)

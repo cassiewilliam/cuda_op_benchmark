@@ -29,6 +29,7 @@ void Timer::toc(const std::string &name)
 
     float milliseconds = 0;
     cudaCheck(cudaEventElapsedTime(&milliseconds, g_anchors[key], stop));
+    cudaCheck(cudaDeviceSynchronize());
 
     g_times[key].push_back(milliseconds);
 

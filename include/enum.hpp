@@ -20,13 +20,15 @@ enum KernelType
     KT_FlashAttention2,
     KT_HandleFlashAttentionWithoutCutlass,
     KT_UnFusedAttention,
-    KT_UnFusedAttentionCublas
+    KT_UnFusedAttentionCublas,
 
     KT_HGEMM_Naive,
     KT_HGEMM_WMMA,
     KT_HGEMM_MMA_PTX,
     KT_HGEMM_MMA_PTX_OPT,
     KT_HGEMM_CUTLASS,
+    KT_HGEMM_BERT,
+    KT_HGEMM_ADDBIAS,
 };
 
 enum ErrorCode

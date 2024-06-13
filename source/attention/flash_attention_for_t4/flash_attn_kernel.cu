@@ -84,7 +84,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
     constexpr int kBlockM  = Kernel_traits::kBlockM;  // 32
     constexpr int kBlockN  = Kernel_traits::kBlockN;  // 32
     constexpr int kHeadDim = Kernel_traits::kHeadDim; // 64
-    constexpr int kNWarps  = Kernel_traits::kNWarps;  // 2
+    // constexpr int kNWarps  = Kernel_traits::kNWarps;  // 2
     constexpr int MMA_M    = kBlockM / decltype(size<0>(typename Kernel_traits::TiledMma::TiledShape_MNK{}))::value; // 1
 
     // TiledMma: MNK => 32x16x16
@@ -137,21 +137,21 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
     Tensor tVgV = gmem_thr_copy_QKV.partition_S(gV);   // (VCPY, VCPY_N, VCPY_K)
     Tensor tVsV = gmem_thr_copy_QKV.partition_D(sV);
 
-    // if (cute::thread0())
-    // {
-    //     printf("actual_seqlen: %d, %d\n", binfo.actual_seqlen, (n_block_max - 1) * kBlockN);
-    //     print(tQgQ);
-    //     printf("\n");
-    //     for (int i = 0; i < size(tQgQ); ++i) {
-    //         printf("%d, %.4f\n", i, (float)tQgQ[i]);
-    //     }
+    if (0 && cute::thread0())
+    {
+        printf("actual_seqlen: %d, %d\n", binfo.actual_seqlen, (n_block_max - 1) * kBlockN);
+        print(tQgQ);
+        printf("\n");
+        for (int i = 0; i < size(tQgQ); ++i) {
+            printf("%d, %.4f\n", i, (float)tQgQ[i]);
+        }
 
-    //     print(tKgK);
-    //     printf("\n");
-    //     for (int i = 0; i < size(tKgK); ++i) {
-    //         printf("%d, %.4f\n", i, (float)tKgK[i]);
-    //     }
-    // }
+        print(tKgK);
+        printf("\n");
+        for (int i = 0; i < size(tKgK); ++i) {
+            printf("%d, %.4f\n", i, (float)tKgK[i]);
+        }
+    }
 
     typename Kernel_traits::TiledMma tiled_mma;
     auto   thr_mma = tiled_mma.get_thread_slice(tidx);
@@ -219,7 +219,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
     // We don't need to clear the sK smem tiles since we'll mask out the scores anyway.
     flash::copy<true>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV, binfo.actual_seqlen - n_block * kBlockN);
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
     cute::cp_async_fence();
+#endif
 
     clear(acc_o);
 
@@ -228,7 +230,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
         // (MMA=4, MMA_M, MMA_N)
         Tensor acc_s = partition_fragment_C(tiled_mma, Shape<Int<kBlockM>, Int<kBlockN>>{});
         clear(acc_s);
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
         flash::cp_async_wait<0>();
+#endif
         __syncthreads();
 
         // NOTE: 最后一个block由于seq len不一定能整除，存在需要加载填充的情况
@@ -245,7 +249,25 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
             tVgV.data() = tVgV.data() + (-int(kBlockN * params.qkv_row_stride));
             flash::copy<false>(gmem_tiled_copy_QKV, tVgV, tVsV, tKVcKV);
         }
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
         cute::cp_async_fence();
+#endif
+
+        if (0 && cute::thread0())
+        {
+            printf("actual_seqlen: %d, %d\n", binfo.actual_seqlen, cu_blockn_len);
+            print(tKsK);
+            printf("\n");
+            for (int i = 0; i < size(tKsK); ++i) {
+                printf("%d, %.4f\n", i, (float)tKsK[i]);
+            }
+
+            print(tVsV);
+            printf("\n");
+            for (int i = 0; i < size(tVsV); ++i) {
+                printf("%d, %.4f\n", i, (float)tVsV[i]);
+            }
+        }
 
         flash::gemm(acc_s, tSrQ, tSrK, tSsQ, tSsK,
                     tiled_mma,
@@ -253,13 +275,38 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
                     smem_thr_copy_Q, smem_thr_copy_K);
         // if (cute::thread0()) { print(acc_s); }
 
+        if (0 && cute::thread0())
+        {
+            printf("acc_s");
+            print(acc_s);
+            printf("\n");
+            for (int i = 0; i < size(acc_s); ++i) {
+                printf("%d, %.4f\n", i, (float)acc_s[i]);
+            }
+        }
+
         // Reshape acc_s from (MMA=4, MMA_M, MMA_N) to (nrow=(2, MMA_M), ncol=(2, MMA_N))
         Tensor scores = make_tensor(acc_s.data(), flash::convert_layout_acc_rowcol(acc_s.layout()));
 
         // TODO: add mask in here
-        flash::apply_mask(scores, cu_blockn_len);
+        if (n_block == n_block_max - 1 && cu_blockn_len < 32)
+        {
+            flash::apply_mask(scores, cu_blockn_len);
+        }
 
+        if (0 && cute::thread0())
+        {
+            printf("scores\n");
+            print(scores);
+            printf("\n");
+            for (int i = 0; i < size(scores); ++i) {
+                printf("%d, %.4f\n", i, (float)scores[i]);
+            }
+        }
+
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
         flash::cp_async_wait<0>();
+#endif
         __syncthreads();
         // if (tidx == 0 && blockIdx.y == 0 && blockIdx.z == 0) { print(tVsV); }
         // __syncthreads();
@@ -269,9 +316,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
             // Advance gK
             tKgK.data() = tKgK.data() + (-int(kBlockN * params.qkv_row_stride));
             flash::copy<false>(gmem_tiled_copy_QKV, tKgK, tKsK, tKVcKV);
-            // This cp_async_fence needs to be in the if block, otherwise the synchronization
-            // isn't right and we get race conditions.
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
             cute::cp_async_fence();
+#endif
         }
 
         // We have key_padding_mask so we'll need to Check_inf
@@ -292,6 +339,23 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
                 scores_sum,
                 acc_o,
                 params.scale_softmax_log2);
+        }
+
+        if (0 && cute::thread0())
+        {
+            printf("scores_max\n");
+            print(scores_max);
+            printf("\n");
+            for (int i = 0; i < size(scores_max); ++i) {
+                printf("%d, %.4f\n", i, (float)scores_max[i]);
+            }
+
+            printf("scores_sum\n");
+            print(scores_sum);
+            printf("\n");
+            for (int i = 0; i < size(scores_sum); ++i) {
+                printf("%d, %.4f\n", i, (float)scores_sum[i]);
+            }
         }
 
         // if (cute::thread0()) { print(scores_max); print(scores_sum); print(scores); }
@@ -337,7 +401,11 @@ inline __device__ void compute_attn_1rowblock(const Params& params,
 
     cute::copy(smem_tiled_copy_O, taccOrO, taccOsO);
 
-    const index_t row_offset_o = binfo.o_offset(params.row_stride, bidb) +
+    // const index_t row_offset_o = binfo.o_offset(params.row_stride, bidb) +
+    //                                 m_block * kBlockM * params.row_stride +
+    //                                 bidh * params.head_stride;
+
+    const index_t row_offset_o = bidb * params.s * params.row_stride +
                                     m_block * kBlockM * params.row_stride +
                                     bidh * params.head_stride;
 
@@ -414,7 +482,7 @@ void run_flash_fwd_64(flash::AttnParams& params, cudaStream_t stream)
     // cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
     //     &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
     // printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
-    printf("grid.xyz = %d, %d, %d, Kernel_traits::kNThreads: %d\n", grid.x, grid.y, grid.z, Kernel_traits::kNThreads);
+    // printf("grid.xyz = %d, %d, %d, Kernel_traits::kNThreads: %d\n", grid.x, grid.y, grid.z, Kernel_traits::kNThreads);
     kernel<<<grid, Kernel_traits::kNThreads, smem_size, stream>>>(params);
     afterKernelLaunch();
 }

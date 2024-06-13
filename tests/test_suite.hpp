@@ -20,7 +20,7 @@ public:
      */
     virtual ~TestCase() = default;
 
-    virtual bool run(int flag) = 0;
+    virtual bool run(std::vector<int> flags) = 0;
 
 private:
     /** case name */
@@ -49,9 +49,9 @@ public:
      */
     void add(TestCase *test, const char *name);
 
-    static int runAll(int flag = 0);
+    static int runAll(std::vector<int> flags = {0});
 
-    static int run(const char *name, int flag = 0);
+    static int run(const char *name, std::vector<int> flags = {0});
 
 private:
     /** get shared instance */

@@ -8,10 +8,10 @@
 
 ## 算子完成情况
 
-|  Op Name  |   Naive   | Version2   | Version 3 | Version 4 | Version 5 | Status  |
-| ------    | --------- | ---------- | --------- | --------- | --------- | ------- |
-|  GEMM     |     ✅    | Wmma ✅     | mma-ptx ✅ | mma-ptx-opt ❌ |  cutlass ❌ |  Doing |
-| Attention |           | FlashAttention ❌ |           |           |           |    Doing   |
+|  Op Name  |   Naive   | Version2          | Version 3  | Version 4      | Version 5   | Status      |
+| ------    | --------- | ----------------- | ---------  | ---------      | ---------   | -------     |
+|  GEMM     |     ✅    | Wmma ✅           | mma-ptx ✅ | mma-ptx-opt ❌ |  cutlass ❌ |  Doing      |
+| Attention |           | FlashAttention ❌ |            |                 |             |    Doing   |
 
 ## 使用方法
 
